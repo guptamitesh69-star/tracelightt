@@ -105,7 +105,6 @@ func main() {
 	port := getEnv("PORT", "8080")
 	allowedOrigins := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
 
-	// Render provides a full redis:// URL; local/docker-compose uses host:port.
 	var redisOpts *redis.Options
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
 		parsed, err := redis.ParseURL(redisURL)
