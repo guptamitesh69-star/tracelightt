@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+Dockerfile
+.dockerignore
+*.md
+*.exe
+node_modules
+.vscode
+.idea
+.DS_Store
+*.test
+bin/
+tmp/
