@@ -55,6 +55,9 @@ export default function Home() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [runningDemo, setRunningDemo] = useState(false);
+  const [demoMessage, setDemoMessage] = useState("");
+  const [demoAnswer, setDemoAnswer] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -78,6 +81,24 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [refresh]);
 
+  const runSampleRequest = useCallback(async () => {
+    setRunningDemo(true);
+    setDemoMessage("");
+    setDemoAnswer("");
+    try {
+      const response = await fetch("/api/demo-completion", { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Sample request failed");
+      setDemoAnswer(body.answer ?? "");
+      setDemoMessage(`Real model request completed in ${body.duration_ms} ms. Trace: ${body.trace_id}`);
+      window.setTimeout(refresh, 1500);
+    } catch (error) {
+      setDemoMessage(error instanceof Error ? error.message : "Sample request failed");
+    } finally {
+      setRunningDemo(false);
+    }
+  }, [refresh]);
+
   const filtered = useMemo(() => traces.filter((trace) => {
     const haystack = `${trace.trace_id} ${trace.model} ${trace.provider_response_id ?? ""}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
@@ -85,11 +106,9 @@ export default function Home() {
 
   const PREVIEW_COUNT = 10;
   const visible = expanded ? filtered : filtered.slice(0, PREVIEW_COUNT);
-
   const totalTokens = traces.reduce((sum, trace) => sum + (trace.total_tokens ?? 0), 0);
   const averageLatency = traces.length ? Math.round(traces.reduce((sum, trace) => sum + trace.duration_ms, 0) / traces.length) : 0;
   const successRate = traces.length ? Math.round((traces.filter((trace) => trace.success).length / traces.length) * 100) : 0;
-
   const processedTotal = metric(metrics, "tracelight_trace_events_processed_total", { status: "success" });
   const avgProcessingMs = Math.round(histogramAverage(metrics, "tracelight_trace_processing_duration_seconds") * 1000);
   const avgBatchSize = histogramAverage(metrics, "tracelight_trace_batch_size");
@@ -103,34 +122,17 @@ export default function Home() {
       </aside>
 
       <section className="content">
-        <header className="topbar"><div><p className="eyebrow">WORKSPACE / OVERVIEW</p><h1>Trace operations</h1><p className="subtitle">Monitor every model request from ingestion to persistence.</p></div><div className="top-actions"><span className="live"><i /> Live</span><button onClick={refresh}>↻ Refresh</button><div className="avatar">TL</div></div></header>
+        <header className="topbar"><div><p className="eyebrow">WORKSPACE / OVERVIEW</p><h1>Trace operations</h1><p className="subtitle">Monitor every model request from ingestion to persistence.</p></div><div className="top-actions"><span className="live"><i /> Live</span><button onClick={runSampleRequest} disabled={runningDemo}>{runningDemo ? "Calling model…" : "Run sample AI request"}</button><button onClick={refresh}>↻ Refresh</button><div className="avatar">TL</div></div></header>
 
-        <div className="stats-grid">
-          <Stat label="Total traces" value={number(traces.length)} detail="Stored in PostgreSQL" accent="blue" />
-          <Stat label="Success rate" value={`${successRate}%`} detail="Across captured requests" accent="green" />
-          <Stat label="Avg. latency" value={`${number(averageLatency)} ms`} detail="Provider round trip" accent="violet" />
-          <Stat label="Total tokens" value={number(totalTokens)} detail="Prompt + completion" accent="orange" />
-        </div>
+        {demoMessage && <p className="action-message" role="status">{demoMessage}</p>}
+        {demoAnswer && <section className="demo-answer"><p className="eyebrow">MODEL RESPONSE</p><p>{demoAnswer}</p></section>}
+
+        <div className="stats-grid"><Stat label="Total traces" value={number(traces.length)} detail="Stored in PostgreSQL" accent="blue" /><Stat label="Success rate" value={`${successRate}%`} detail="Across captured requests" accent="green" /><Stat label="Avg. latency" value={`${number(averageLatency)} ms`} detail="Provider round trip" accent="violet" /><Stat label="Total tokens" value={number(totalTokens)} detail="Prompt + completion" accent="orange" /></div>
 
         <div className="section-heading"><div><h2>Trace activity</h2><p>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Loading telemetry…"}</p></div><div className="search">⌕<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search traces…" /></div></div>
         <div className="table-card"><table><thead><tr><th>Trace ID</th><th>Model</th><th>Tokens</th><th>Latency</th><th>Status</th><th>Captured</th><th /></tr></thead><tbody>{visible.map((trace) => <tr key={trace.trace_id} onClick={() => setSelected(trace)}><td><code>{shortId(trace.trace_id)}</code></td><td><span className="model"><i />{trace.model}</span></td><td>{number(trace.total_tokens)}</td><td>{number(trace.duration_ms)} ms</td><td><span className={trace.success ? "badge success" : "badge failure"}>{trace.success ? "Success" : "Failed"}</span></td><td className="muted">{new Date(trace.timestamp).toLocaleString()}</td><td className="arrow">→</td></tr>)}{!filtered.length && <tr><td colSpan={7} className="empty">{status === "error" ? "Could not reach the TraceLight API." : "No traces match your search."}</td></tr>}</tbody></table>{filtered.length > PREVIEW_COUNT && <button className="expand" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : `Show all ${filtered.length.toLocaleString()} traces`}</button>}</div>
 
-        <div className="lower-grid">
-          <section className="panel">
-            <div className="panel-heading"><div><h2>Pipeline health</h2><p>Live ingestion telemetry</p></div><span className="healthy">Healthy</span></div>
-            <div className="health-row">
-              <Health label="Accepted" value={metric(metrics, "tracelight_trace_events_accepted_total")} />
-              <Health label="Queue depth" value={metric(metrics, "tracelight_trace_queue_depth")} />
-              <Health label="Overflowed" value={metric(metrics, "tracelight_trace_events_overflowed_total")} />
-            </div>
-            <div className="health-row">
-              <Health label="Processed (workers)" value={processedTotal} />
-              <Health label="Avg. write latency" value={avgProcessingMs} suffix=" ms" />
-              <Health label="Avg. batch size" value={Math.round(avgBatchSize * 10) / 10} />
-            </div>
-          </section>
-          <section className="panel"><div className="panel-heading"><div><h2>Service topology</h2><p>Connected components</p></div><span className="healthy">4 online</span></div><div className="services"><Service name="Go ingestion" port=":8080" /><Service name="PostgreSQL" port=":5432" /><Service name="Redis stream" port=":6379" /><Service name="Prometheus" port=":9090" /></div></section>
-        </div>
+        <div className="lower-grid"><section className="panel"><div className="panel-heading"><div><h2>Pipeline health</h2><p>Live ingestion telemetry</p></div><span className="healthy">Healthy</span></div><div className="health-row"><Health label="Accepted" value={metric(metrics, "tracelight_trace_events_accepted_total")} /><Health label="Queue depth" value={metric(metrics, "tracelight_trace_queue_depth")} /><Health label="Overflowed" value={metric(metrics, "tracelight_trace_events_overflowed_total")} /></div><div className="health-row"><Health label="Processed (workers)" value={processedTotal} /><Health label="Avg. write latency" value={avgProcessingMs} suffix=" ms" /><Health label="Avg. batch size" value={Math.round(avgBatchSize * 10) / 10} /></div></section><section className="panel"><div className="panel-heading"><div><h2>Service topology</h2><p>Connected components</p></div><span className="healthy">4 online</span></div><div className="services"><Service name="Go ingestion" port=":8080" /><Service name="PostgreSQL" port=":5432" /><Service name="Redis stream" port=":6379" /><Service name="Prometheus" port=":9090" /></div></section></div>
       </section>
 
       {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}><article className="drawer" onClick={(event) => event.stopPropagation()}><button className="close" onClick={() => setSelected(null)}>×</button><p className="eyebrow">TRACE DETAIL</p><h2>{shortId(selected.trace_id)}</h2><span className={selected.success ? "badge success" : "badge failure"}>{selected.success ? "Successful request" : "Failed request"}</span><div className="detail-grid"><Detail label="Model" value={selected.model} /><Detail label="Duration" value={`${selected.duration_ms} ms`} /><Detail label="Prompt tokens" value={number(selected.prompt_tokens)} /><Detail label="Completion tokens" value={number(selected.completion_tokens)} /><Detail label="Total tokens" value={number(selected.total_tokens)} /><Detail label="Provider response" value={selected.provider_response_id ?? "—"} /></div><div className="json"><div>RAW EVENT <button onClick={() => navigator.clipboard.writeText(JSON.stringify(selected, null, 2))}>Copy JSON</button></div><pre>{JSON.stringify(selected, null, 2)}</pre></div></article></div>}
