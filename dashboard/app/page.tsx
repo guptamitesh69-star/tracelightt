@@ -122,7 +122,7 @@ export default function Home() {
       </aside>
 
       <section className="content">
-        <header className="topbar"><div><p className="eyebrow">WORKSPACE / OVERVIEW</p><h1>Trace operations</h1><p className="subtitle">Monitor every model request from ingestion to persistence.</p></div><div className="top-actions"><span className="live"><i /> Live</span><button onClick={runSampleRequest} disabled={runningDemo}>{runningDemo ? "Calling model…" : "Run sample AI request"}</button><button onClick={refresh}>↻ Refresh</button><div className="avatar">TL</div></div></header>
+        <header className="topbar"><div><p className="eyebrow">WORKSPACE / OVERVIEW</p><h1>Trace operations</h1><p className="subtitle">Monitor every model request from ingestion to persistence.</p></div><div className="top-actions"><span className="live"><i /> Live</span><button className="demo-button" onClick={runSampleRequest} disabled={runningDemo}>{runningDemo ? "Calling model…" : "▶ Run sample AI request"}</button><button onClick={refresh}>↻ Refresh</button><div className="avatar">TL</div></div></header>
 
         {demoMessage && <p className="action-message" role="status">{demoMessage}</p>}
         {demoAnswer && <section className="demo-answer"><p className="eyebrow">MODEL RESPONSE</p><p>{demoAnswer}</p></section>}
